@@ -2185,4 +2185,175 @@
             </form>
         </div>
     </div>
+
+    <!-- Main Application -->
+    <div id="app" class="app-container">
+        <div class="app-header">
+            <h1 class="header-title" id="headerTitle">
+                <i data-lucide="messages-square"></i>
+                StreamXChat
+            </h1>
+            <div class="header-actions">
+                <button class="icon-btn" onclick="showAccountSwitcher()">
+                    <i data-lucide="users-round"></i>
+                </button>
+                <button class="icon-btn" onclick="showCreateGroup()">
+                    <i data-lucide="user-plus"></i>
+                </button>
+                <button class="profile-btn" onclick="showProfile()" id="profileBtn">U</button>
+            </div>
+        </div>
+
+        <div class="app-content" id="appContent">
+            <!-- Messages Tab -->
+            <div id="messagesTab">
+                <div id="chatsList"></div>
+            </div>
+
+            <!-- Users Tab -->
+            <div id="usersTab" class="hidden">
+                <div class="search-container">
+                    <div class="search-wrapper">
+                        <i data-lucide="search" class="search-icon"></i>
+                        <input type="text" class="search-input" id="userSearch" placeholder="Search people..." oninput="filterUsers()">
+                    </div>
+                </div>
+                <div id="usersList"></div>
+            </div>
+
+            <!-- Stories/Posts Tab -->
+            <div id="storiesTab" class="hidden">
+                <div class="stories-container" id="storiesRow">
+                    <div class="story-item" onclick="showCreatePost()">
+                        <div class="story-avatar-ring">
+                            <div class="story-avatar" id="myStoryAvatar">U</div>
+                            <div class="add-story-btn">
+                                <i data-lucide="plus"></i>
+                            </div>
+                        </div>
+                        <div class="story-name">Your Story</div>
+                    </div>
+                </div>
+                <div id="postsList"></div>
+            </div>
+        </div>
+
+        <div class="bottom-nav">
+            <button class="nav-item active" onclick="switchTab('messages')">
+                <i data-lucide="message-circle"></i>
+                <span>Chats</span>
+            </button>
+            <button class="nav-item" onclick="switchTab('users')">
+                <i data-lucide="users"></i>
+                <span>People</span>
+            </button>
+            <button class="nav-item" onclick="switchTab('stories')">
+                <i data-lucide="image"></i>
+                <span>Posts</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Chat View -->
+    <div id="chatView" class="chat-view">
+        <div class="chat-header">
+            <button class="back-btn" onclick="closeChat()">
+                <i data-lucide="arrow-left"></i>
+            </button>
+            <div class="avatar-wrapper">
+                <div class="avatar" id="chatAvatar">U</div>
+                <div class="online-indicator"></div>
+            </div>
+            <div class="chat-user-info" onclick="viewUserProfile()">
+                <div class="chat-user-name" id="chatUserName">User</div>
+                <div class="chat-user-status">
+                    <div class="status-dot"></div>
+                    Online
+                </div>
+            </div>
+            <div class="chat-actions">
+                <button class="icon-btn" onclick="showChatOptions()">
+                    <i data-lucide="more-vertical"></i>
+                </button>
+            </div>
+        </div>
+        <div class="messages-container" id="messagesContainer"></div>
+        <div class="message-input-container" style="position: relative;">
+            <div id="replyPreview" class="reply-preview" style="display: none;">
+                <div class="reply-preview-content">
+                    <div class="reply-preview-label">Replying to <span id="replyTo"></span></div>
+                    <div class="reply-preview-text" id="replyText"></div>
+                </div>
+                <button class="icon-btn" onclick="cancelReply()" style="width: 32px; height: 32px;">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <input type="file" id="fileInput" class="file-input" accept="*/*" onchange="handleFileSelect(event)">
+            <button class="attachment-btn" onclick="document.getElementById('fileInput').click()">
+                <i data-lucide="paperclip"></i>
+            </button>
+            <input type="text" class="message-input" id="messageInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="send-btn" onclick="sendMessage()">
+                <i data-lucide="send"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal-overlay" onclick="if(event.target===this) closeProfile()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">My Profile</h2>
+                <button class="close-btn" onclick="closeProfile()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="profile-info">
+                <input type="file" id="profilePicInput" class="file-input" accept="image/*" onchange="handleProfilePicChange(event)">
+                <div class="profile-avatar-large" id="profileAvatarLarge" onclick="document.getElementById('profilePicInput').click()">U</div>
+                <div class="profile-name" id="profileName">User Name</div>
+                <div class="profile-identifier" id="profileIdentifier">user@example.com</div>
+            </div>
+            <div class="profile-code-box">
+                <div class="code-label">
+                    <i data-lucide="key"></i>
+                    Your Reset Code (Save it!)
+                </div>
+                <div class="code-value" id="resetCodeDisplay">000000</div>
+            </div>
+            <div class="profile-actions">
+                <button class="action-btn logout-btn" onclick="logout()">
+                    <i data-lucide="log-out"></i>
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Profile Modal -->
+    <div id="userProfileModal" class="modal-overlay" onclick="if(event.target===this) closeUserProfile()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">User Profile</h2>
+                <button class="close-btn" onclick="closeUserProfile()">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="profile-info">
+                <div class="profile-avatar-large" id="userProfileAvatar">U</div>
+                <div class="profile-name" id="userProfileName">User Name</div>
+                <div class="profile-identifier" id="userProfileIdentifier">user@example.com</div>
+            </div>
+            <div class="profile-actions">
+                <button class="action-btn chat-btn" onclick="startChatFromProfile()">
+                    <i data-lucide="message-circle"></i>
+                    Send Message
+                </button>
+                <button class="action-btn block-btn" id="blockBtn" onclick="toggleBlock()">
+                    <i data-lucide="ban"></i>
+                    <span id="blockBtnText">Block User</span>
+                </button>
+            </div>
+        </div>
+    </div>
         
