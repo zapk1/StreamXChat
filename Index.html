@@ -3940,3 +3940,25 @@
                 }
             }
         }
+
+
+
+
+
+
+        function startRealtimeSync() {
+            setInterval(() => {
+                if (currentUser) {
+                    db.ref('users/' + currentUser.id + '/lastSeen').set(Date.now());
+                }
+            }, 30000);
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (currentUser) {
+                db.ref('users/' + currentUser.id + '/online').set(false);
+            }
+        });
+    </script>
+</body>
+</html>
