@@ -3069,3 +3069,874 @@
 
 
         
+// Posts Functions
+        function loadPosts() {
+            const postsRef = db.ref('posts');
+            postsRef.on('value', (snapshot) => {
+                const posts = snapshot.val() || {};
+                const postsList = document.getElementById('postsList');
+                postsList.innerHTML = '';
+
+                const postsArray = Object.values(posts).sort((a, b) => b.timestamp - a.timestamp);
+
+                postsArray.forEach(post => {
+                    db.ref('users/' + post.userId).once('value', (userSnap) => {
+                        const author = userSnap.val();
+                        if (!author) return;
+
+                        const div = document.createElement('div');
+                        div.className = 'post-card';
+
+                        const authorAvatar = author.profilePic 
+                            ? `<img src="${author.profilePic}" alt="${author.name}">`
+                            : author.name.charAt(0).toUpperCase();
+
+                        const timeAgo = getTimeAgo(post.timestamp);
+
+                        let imagesHtml = '';
+                        if (post.images && post.images.length > 0) {
+                            imagesHtml = '<div class="post-images">';
+                            post.images.forEach(img => {
+                                if (img.type === 'video') {
+                                    imagesHtml += `<video class="post-video" controls src="${img.data}"></video>`;
+                                } else {
+                                    imagesHtml += `<img class="post-image" src="${img}" onclick="viewImage('${img}')">`;
+                                }
+                            });
+                            imagesHtml += '</div>';
+                        }
+
+                        const isLiked = post.likedBy && post.likedBy.includes(currentUser.id);
+
+                        div.innerHTML = `
+                            <div class="post-header">
+                                <div class="post-author-avatar">${authorAvatar}</div>
+                                <div class="post-author-info">
+                                    <div class="post-author-name">${author.name}</div>
+                                    <div class="post-time">${timeAgo}</div>
+                                </div>
+                                <button class="post-menu-btn" onclick="showPostMenu(event, '${post.id}')">
+                                    <i data-lucide="more-horizontal"></i>
+                                </button>
+                            </div>
+                            <div class="post-content">
+                                ${post.text ? `<div class="post-text">${post.text}</div>` : ''}
+                                ${imagesHtml}
+                            </div>
+                            <div class="post-stats">
+                                <div class="post-stat">
+                                    <i data-lucide="eye"></i>
+                                    ${post.views || 0}
+                                </div>
+                                <div class="post-stat">
+                                    <i data-lucide="heart"></i>
+                                    ${post.likes || 0}
+                                </div>
+                            </div>
+                            <div class="post-actions">
+                                <button class="post-action-btn ${isLiked ? 'liked' : ''}" onclick="togglePostLike('${post.id}')">
+                                    <i data-lucide="${isLiked ? 'heart' : 'heart'}"></i>
+                                    ${isLiked ? 'Liked' : 'Like'}
+                                </button>
+                            </div>
+                        `;
+                        postsList.appendChild(div);
+
+                        // Increment views slowly
+                        if (post.views < post.targetViews) {
+                            setTimeout(() => {
+                                db.ref('posts/' + post.id + '/views').transaction(current => {
+                                    return (current || 0) + 1;
+                                });
+                            }, Math.random() * 5000);
+                        }
+                    });
+                });
+
+                lucide.createIcons();
+            });
+        }
+
+        function getTimeAgo(timestamp) {
+            const seconds = Math.floor((Date.now() - timestamp) / 1000);
+            if (seconds < 60) return 'Just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            return `${days}d ago`;
+        }
+
+        function showPostMenu(event, postId) {
+            event.stopPropagation();
+            alert('Post options');
+        }
+
+        async function togglePostLike(postId) {
+            const postRef = db.ref('posts/' + postId);
+            const snapshot = await postRef.once('value');
+            const post = snapshot.val();
+            
+            const likedBy = post.likedBy || [];
+            const isLiked = likedBy.includes(currentUser.id);
+            
+            if (isLiked) {
+                await postRef.update({
+                    likes: (post.likes || 1) - 1,
+                    likedBy: likedBy.filter(id => id !== currentUser.id)
+                });
+            } else {
+                likedBy.push(currentUser.id);
+                const newLikes = (post.likes || 0) + 1;
+                const maxLikes = Math.floor(post.views * 0.7);
+                await postRef.update({
+                    likes: Math.min(newLikes, maxLikes),
+                    likedBy: likedBy
+                });
+            }
+        }
+
+        function showCreatePost() {
+            document.getElementById('createPostModal').classList.add('active');
+            lucide.createIcons();
+        }
+
+        function closeCreatePost() {
+            document.getElementById('createPostModal').classList.remove('active');
+            document.getElementById('postText').value = '';
+            selectedPostImages = [];
+            document.getElementById('postImagesPreview').innerHTML = '';
+        }
+
+        function toggleComments() {
+            const toggle = document.getElementById('commentsToggle');
+            toggle.classList.toggle('active');
+        }
+
+        async function handlePostImagesSelect(event) {
+            const files = Array.from(event.target.files);
+            
+            if (selectedPostImages.length + files.length > 5) {
+                alert('Maximum 5 images or 1 video allowed');
+                return;
+            }
+
+            for (const file of files) {
+                if (file.type.startsWith('video/')) {
+                    if (file.size > 10 * 1024 * 1024) {
+                        alert('Video size must be less than 10MB');
+                        continue;
+                    }
+                    if (selectedPostImages.some(img => img.type === 'video')) {
+                        alert('Only 1 video allowed');
+                        continue;
+                    }
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const base64 = e.target.result;
+                    selectedPostImages.push({
+                        data: base64,
+                        type: file.type.startsWith('video/') ? 'video' : 'image'
+                    });
+                    renderPostImagesPreview();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function renderPostImagesPreview() {
+            const preview = document.getElementById('postImagesPreview');
+            preview.innerHTML = '';
+            
+            selectedPostImages.forEach((img, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'preview-image-wrapper';
+                
+                if (img.type === 'video') {
+                    wrapper.innerHTML = `
+                        <video class="preview-image" src="${img.data}"></video>
+                        <button type="button" class="remove-image-btn" onclick="removePostImage(${index})">
+                            <i data-lucide="x"></i>
+                        </button>
+                    `;
+                } else {
+                    wrapper.innerHTML = `
+                        <img class="preview-image" src="${img.data}">
+                        <button type="button" class="remove-image-btn" onclick="removePostImage(${index})">
+                            <i data-lucide="x"></i>
+                        </button>
+                    `;
+                }
+                
+                preview.appendChild(wrapper);
+            });
+            
+            lucide.createIcons();
+        }
+
+        function removePostImage(index) {
+            selectedPostImages.splice(index, 1);
+            renderPostImagesPreview();
+        }
+
+        async function handleCreatePost(event) {
+            event.preventDefault();
+            
+            const text = document.getElementById('postText').value.trim();
+            const allowComments = document.getElementById('commentsToggle').classList.contains('active');
+            
+            if (!text && selectedPostImages.length === 0) {
+                alert('Please add some content');
+                return;
+            }
+
+            const targetViews = Math.floor(Math.random() * (67000 - 25) + 25);
+            const initialViews = Math.floor(Math.random() * 50);
+
+            const postRef = db.ref('posts').push();
+            await postRef.set({
+                id: postRef.key,
+                userId: currentUser.id,
+                text: text,
+                images: selectedPostImages.map(img => img.type === 'video' ? img : img.data),
+                allowComments: allowComments,
+                timestamp: Date.now(),
+                views: initialViews,
+                targetViews: targetViews,
+                likes: 0,
+                likedBy: [],
+                comments: []
+            });
+
+            closeCreatePost();
+            switchTab('stories');
+        }
+
+        // Chat Functions
+        async function startChat(userId, user) {
+            const blockedUsers = currentUser.blockedUsers || [];
+            if (blockedUsers.includes(userId)) {
+                alert('You have blocked this user');
+                return;
+            }
+
+            const chatId = [currentUser.id, userId].sort().join('_');
+            
+            const chatRef = db.ref('chats/' + chatId);
+            const snapshot = await chatRef.once('value');
+            
+            if (!snapshot.exists()) {
+                await chatRef.set({
+                    participants: [currentUser.id, userId],
+                    createdAt: Date.now(),
+                    lastMessage: '',
+                    lastMessageTime: Date.now()
+                });
+            }
+            
+            openChat(chatId, user, userId);
+        }
+
+        function openChat(chatId, user, userId) {
+            currentChatId = chatId;
+            currentChatUser = { ...user, id: userId };
+            
+            document.getElementById('app').classList.remove('active');
+            document.getElementById('chatView').classList.add('active');
+            document.getElementById('chatUserName').textContent = user.name;
+            
+            const avatarContent = user.profilePic 
+                ? `<img src="${user.profilePic}" alt="${user.name}">`
+                : user.name.charAt(0).toUpperCase();
+            document.getElementById('chatAvatar').innerHTML = avatarContent;
+            
+            loadMessages();
+            lucide.createIcons();
+        }
+
+        function openGroupChat(chatId, chat) {
+            currentChatId = chatId;
+            currentChatUser = { ...chat, isGroup: true };
+            
+            document.getElementById('app').classList.remove('active');
+            document.getElementById('chatView').classList.add('active');
+            document.getElementById('chatUserName').textContent = chat.name;
+            document.getElementById('chatAvatar').textContent = chat.name.charAt(0).toUpperCase();
+            
+            const statusDiv = document.querySelector('.chat-user-status');
+            statusDiv.innerHTML = `<i data-lucide="users"></i> ${chat.members.length} members`;
+            
+            loadMessages();
+            lucide.createIcons();
+        }
+
+        function closeChat() {
+            document.getElementById('chatView').classList.remove('active');
+            document.getElementById('app').classList.add('active');
+            if (currentChatId) {
+                db.ref('chats/' + currentChatId + '/messages').off();
+            }
+            currentChatId = null;
+            currentChatUser = null;
+            replyingTo = null;
+            document.getElementById('replyPreview').style.display = 'none';
+        }
+
+        function loadMessages() {
+            const messagesRef = db.ref('chats/' + currentChatId + '/messages');
+            const messagesContainer = document.getElementById('messagesContainer');
+            
+            const localKey = `messages_${currentChatId}`;
+            const localMsgs = JSON.parse(localStorage.getItem(localKey) || '[]');
+            if (localMsgs.length > 0) {
+                renderMessages(localMsgs);
+            }
+            
+            messagesRef.on('value', (snapshot) => {
+                const messages = snapshot.val() || {};
+                const messageList = Object.entries(messages).map(([id, msg]) => ({ ...msg, id }));
+                messageList.sort((a, b) => a.timestamp - b.timestamp);
+                
+                localStorage.setItem(localKey, JSON.stringify(messageList));
+                
+                renderMessages(messageList);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+        }
+
+        function renderMessages(messages) {
+            const messagesContainer = document.getElementById('messagesContainer');
+            messagesContainer.innerHTML = '';
+            
+            messages.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = `message ${msg.senderId === currentUser.id ? 'own' : 'other'}`;
+                div.dataset.messageId = msg.id;
+                
+                const time = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                
+                let avatarContent = msg.senderName.charAt(0).toUpperCase();
+                if (msg.senderAvatar) {
+                    avatarContent = `<img src="${msg.senderAvatar}" alt="${msg.senderName}">`;
+                }
+
+                let messageContent = '';
+                
+                if (msg.replyTo) {
+                    messageContent += `
+                        <div class="message-reply">
+                            <div class="reply-author">${msg.replyTo.senderName}</div>
+                            <div class="reply-text">${msg.replyTo.text || 'File'}</div>
+                        </div>
+                    `;
+                }
+
+                messageContent += `<div class="message-text">${msg.text || ''}</div>`;
+
+                if (msg.fileUrl) {
+                    if (msg.fileType && msg.fileType.startsWith('image/')) {
+                        messageContent += `<img src="${msg.fileUrl}" class="message-image" onclick="viewImage('${msg.fileUrl}')">`;
+                    } else {
+                        messageContent += `
+                            <div class="message-file" onclick="downloadFile('${msg.fileUrl}', '${msg.fileName}')">
+                                <div class="file-icon">
+                                    <i data-lucide="file"></i>
+                                </div>
+                                <div class="file-info">
+                                    <div class="file-name">${msg.fileName || 'File'}</div>
+                                    <div class="file-size">${msg.fileSize || ''}</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                messageContent += `<div class="message-time">${time}</div>`;
+
+                if (msg.likedBy && msg.likedBy.includes(currentUser.id)) {
+                    messageContent += `
+                        <div class="message-like">
+                            <i data-lucide="heart"></i>
+                        </div>
+                    `;
+                }
+
+                div.innerHTML = `
+                    <div class="message-avatar">${avatarContent}</div>
+                    <div class="message-content">
+                        <div class="message-bubble">
+                            ${messageContent}
+                        </div>
+                    </div>
+                `;
+
+                div.addEventListener('touchstart', (e) => {
+                    longPressTimer = setTimeout(() => {
+                        replyToSpecificMessage(msg);
+                    }, 500);
+                });
+
+                div.addEventListener('touchend', () => {
+                    clearTimeout(longPressTimer);
+                });
+
+                div.addEventListener('mousedown', () => {
+                    longPressTimer = setTimeout(() => {
+                        messageContextTarget = msg;
+                        showContextMenu(event);
+                    }, 500);
+                });
+
+                div.addEventListener('mouseup', () => {
+                    clearTimeout(longPressTimer);
+                });
+
+                let lastTap = 0;
+                div.addEventListener('dblclick', () => {
+                    toggleMessageLike(msg.id);
+                });
+
+                div.addEventListener('touchend', (e) => {
+                    const currentTime = new Date().getTime();
+                    const tapLength = currentTime - lastTap;
+                    if (tapLength < 500 && tapLength > 0) {
+                        toggleMessageLike(msg.id);
+                    }
+                    lastTap = currentTime;
+                });
+
+                messagesContainer.appendChild(div);
+            });
+
+            lucide.createIcons();
+        }
+
+        async function toggleMessageLike(messageId) {
+            const msgRef = db.ref('chats/' + currentChatId + '/messages/' + messageId);
+            const snapshot = await msgRef.once('value');
+            const msg = snapshot.val();
+            
+            const likedBy = msg.likedBy || [];
+            const isLiked = likedBy.includes(currentUser.id);
+            
+            const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageDiv && !isLiked) {
+                const heart = document.createElement('div');
+                heart.className = 'like-animation';
+                heart.innerHTML = '<i data-lucide="heart" style="width: 48px; height: 48px; color: #ef4444;"></i>';
+                heart.style.position = 'fixed';
+                heart.style.left = event.clientX + 'px';
+                heart.style.top = event.clientY + 'px';
+                document.body.appendChild(heart);
+                lucide.createIcons();
+                setTimeout(() => heart.remove(), 1000);
+            }
+            
+            if (isLiked) {
+                await msgRef.update({
+                    likedBy: likedBy.filter(id => id !== currentUser.id)
+                });
+            } else {
+                likedBy.push(currentUser.id);
+                await msgRef.update({
+                    likedBy: likedBy
+                });
+            }
+        }
+
+    
+       function replyToSpecificMessage(msg) {
+            replyingTo = msg;
+            document.getElementById('replyPreview').style.display = 'flex';
+            document.getElementById('replyTo').textContent = msg.senderName;
+            document.getElementById('replyText').textContent = msg.text || 'File';
+            document.getElementById('messageInput').focus();
+            lucide.createIcons();
+        }
+
+        function cancelReply() {
+            replyingTo = null;
+            document.getElementById('replyPreview').style.display = 'none';
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            
+            if (!text && !selectedFile) return;
+            
+            const message = {
+                text: text,
+                senderId: currentUser.id,
+                senderName: currentUser.name,
+                senderAvatar: currentUser.profilePic,
+                timestamp: Date.now()
+            };
+
+            if (replyingTo) {
+                message.replyTo = {
+                    senderId: replyingTo.senderId,
+                    senderName: replyingTo.senderName,
+                    text: replyingTo.text
+                };
+                cancelReply();
+            }
+
+            if (selectedFile) {
+                message.fileUrl = selectedFile.data;
+                message.fileName = selectedFile.name;
+                message.fileSize = selectedFile.size;
+                message.fileType = selectedFile.type;
+                selectedFile = null;
+            }
+            
+            const localKey = `messages_${currentChatId}`;
+            const localMsgs = JSON.parse(localStorage.getItem(localKey) || '[]');
+            localMsgs.push({ ...message, id: 'temp_' + Date.now() });
+            localStorage.setItem(localKey, JSON.stringify(localMsgs));
+            
+            await db.ref('chats/' + currentChatId + '/messages').push(message);
+            await db.ref('chats/' + currentChatId).update({
+                lastMessage: text || 'File',
+                lastMessageTime: Date.now()
+            });
+            
+            input.value = '';
+        }
+
+        let selectedFile = null;
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.size > 50 * 1024 * 1024) {
+                alert('File too large. Maximum size is 50MB');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                selectedFile = {
+                    data: e.target.result,
+                    name: file.name,
+                    size: formatFileSize(file.size),
+                    type: file.type
+                };
+
+                if (!file.type.startsWith('image/')) {
+                    sendMessage();
+                } else {
+                    document.getElementById('messageInput').placeholder = 'Add a caption...';
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function downloadFile(url, filename) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename || 'download';
+            a.click();
+        }
+
+        function showProfile() {
+            document.getElementById('profileAvatarLarge').innerHTML = currentUser.profilePic 
+                ? `<img src="${currentUser.profilePic}" alt="Profile">`
+                : currentUser.name.charAt(0).toUpperCase();
+            document.getElementById('profileName').textContent = currentUser.name;
+            document.getElementById('profileIdentifier').textContent = currentUser.identifier;
+            document.getElementById('resetCodeDisplay').textContent = currentUser.resetCode;
+            document.getElementById('profileModal').classList.add('active');
+            lucide.createIcons();
+        }
+
+        function closeProfile() {
+            document.getElementById('profileModal').classList.remove('active');
+        }
+
+        function showUserProfile(userId, user) {
+            currentViewedUserId = userId;
+            
+            const avatarContent = user.profilePic 
+                ? `<img src="${user.profilePic}" alt="${user.name}">`
+                : user.name.charAt(0).toUpperCase();
+            
+            document.getElementById('userProfileAvatar').innerHTML = avatarContent;
+            document.getElementById('userProfileName').textContent = user.name;
+            document.getElementById('userProfileIdentifier').textContent = user.bio || user.identifier;
+            
+            const blockedUsers = currentUser.blockedUsers || [];
+            const isBlocked = blockedUsers.includes(userId);
+            
+            document.getElementById('blockBtnText').textContent = isBlocked ? 'Unblock User' : 'Block User';
+            document.getElementById('userProfileModal').classList.add('active');
+            lucide.createIcons();
+        }
+
+        function viewUserProfile() {
+            if (currentChatUser && !currentChatUser.isGroup) {
+                showUserProfile(currentChatUser.id, currentChatUser);
+            }
+        }
+
+        function closeUserProfile() {
+            document.getElementById('userProfileModal').classList.remove('active');
+        }
+
+        function startChatFromProfile() {
+            closeUserProfile();
+            const userId = currentViewedUserId;
+            db.ref('users/' + userId).once('value', (snapshot) => {
+                const user = snapshot.val();
+                if (user) {
+                    startChat(userId, user);
+                }
+            });
+        }
+
+        async function toggleBlock() {
+            const userId = currentViewedUserId;
+            const blockedUsers = currentUser.blockedUsers || [];
+            const isBlocked = blockedUsers.includes(userId);
+            
+            if (isBlocked) {
+                const newBlocked = blockedUsers.filter(id => id !== userId);
+                await db.ref('users/' + currentUser.id + '/blockedUsers').set(newBlocked);
+                currentUser.blockedUsers = newBlocked;
+            } else {
+                blockedUsers.push(userId);
+                await db.ref('users/' + currentUser.id + '/blockedUsers').set(blockedUsers);
+                currentUser.blockedUsers = blockedUsers;
+            }
+            
+            localStorage.setItem('streamxUser', JSON.stringify(currentUser));
+            closeUserProfile();
+            loadUsers();
+        }
+
+        function showCreateGroup() {
+            selectedGroupMembers = [];
+            document.getElementById('groupMembersPreview').innerHTML = '';
+            
+            const usersList = document.getElementById('groupUsersList');
+            usersList.innerHTML = '';
+            
+            Object.entries(allUsers).forEach(([userId, user]) => {
+                if (userId === currentUser.id) return;
+                
+                const div = document.createElement('div');
+                div.className = 'user-checkbox';
+                div.onclick = () => toggleGroupMember(userId, user);
+                
+                const avatarContent = user.profilePic 
+                    ? `<img src="${user.profilePic}" alt="${user.name}">`
+                    : user.name.charAt(0).toUpperCase();
+                
+                div.innerHTML = `
+                    <div class="checkbox" id="checkbox-${userId}"></div>
+                    <div class="avatar" style="width: 40px; height: 40px; font-size: 16px;">${avatarContent}</div>
+                    <div>${user.name}</div>
+                `;
+                usersList.appendChild(div);
+            });
+            
+            document.getElementById('createGroupModal').classList.add('active');
+            lucide.createIcons();
+        }
+
+        function closeCreateGroup() {
+            document.getElementById('createGroupModal').classList.remove('active');
+        }
+
+        function toggleGroupMember(userId, user) {
+            const index = selectedGroupMembers.findIndex(m => m.id === userId);
+            const checkbox = document.getElementById('checkbox-' + userId);
+            
+            if (index > -1) {
+                selectedGroupMembers.splice(index, 1);
+                checkbox.classList.remove('checked');
+                checkbox.innerHTML = '';
+            } else {
+                selectedGroupMembers.push({ id: userId, name: user.name });
+                checkbox.classList.add('checked');
+                checkbox.innerHTML = '<i data-lucide="check"></i>';
+            }
+            
+            renderGroupMembersPreview();
+            lucide.createIcons();
+        }
+
+        function renderGroupMembersPreview() {
+            const preview = document.getElementById('groupMembersPreview');
+            preview.innerHTML = '';
+            
+            selectedGroupMembers.forEach(member => {
+                const tag = document.createElement('div');
+                tag.className = 'member-tag';
+                tag.innerHTML = `
+                    ${member.name}
+                    <i data-lucide="x" onclick="toggleGroupMember('${member.id}', {name: '${member.name}'})"></i>
+                `;
+                preview.appendChild(tag);
+            });
+            
+            lucide.createIcons();
+        }
+
+        async function handleCreateGroup(event) {
+            event.preventDefault();
+            
+            const groupName = document.getElementById('groupName').value.trim();
+            if (!groupName) {
+                alert('Please enter a group name');
+                return;
+            }
+            
+            if (selectedGroupMembers.length === 0) {
+                alert('Please select at least one member');
+                return;
+            }
+            
+            const members = [currentUser.id, ...selectedGroupMembers.map(m => m.id)];
+            
+            const groupRef = db.ref('chats').push();
+            await groupRef.set({
+                isGroup: true,
+                name: groupName,
+                members: members,
+                admin: currentUser.id,
+                createdAt: Date.now(),
+                lastMessage: '',
+                lastMessageTime: Date.now()
+            });
+            
+            closeCreateGroup();
+            switchTab('messages');
+        }
+
+        function showChatOptions() {
+            if (currentChatUser.isGroup) {
+                const isAdmin = currentChatUser.admin === currentUser.id;
+                alert(isAdmin ? 'Group Admin Options' : 'Group Member Options');
+            } else {
+                if (confirm('Delete this conversation?')) {
+                    db.ref('chats/' + currentChatId).remove();
+                    closeChat();
+                }
+            }
+        }
+
+        function showContextMenu(event) {
+            event.preventDefault();
+            const menu = document.getElementById('contextMenu');
+            menu.style.left = event.pageX + 'px';
+            menu.style.top = event.pageY + 'px';
+            menu.classList.add('active');
+            
+            document.addEventListener('click', closeContextMenu);
+        }
+
+        function closeContextMenu() {
+            document.getElementById('contextMenu').classList.remove('active');
+            document.removeEventListener('click', closeContextMenu);
+        }
+
+        function replyToMessage() {
+            if (messageContextTarget) {
+                replyToSpecificMessage(messageContextTarget);
+            }
+            closeContextMenu();
+        }
+
+        async function deleteMessage() {
+            if (messageContextTarget && messageContextTarget.senderId === currentUser.id) {
+                if (confirm('Delete this message?')) {
+                    await db.ref('chats/' + currentChatId + '/messages/' + messageContextTarget.id).remove();
+                }
+            }
+            closeContextMenu();
+        }
+
+        function showAccountSwitcher() {
+            const accounts = JSON.parse(localStorage.getItem('streamxAccounts') || '[]');
+            const accountList = document.getElementById('accountList');
+            accountList.innerHTML = '';
+            
+            accounts.forEach(account => {
+                const div = document.createElement('div');
+                div.className = 'account-item' + (account.id === currentUser.id ? ' active' : '');
+                div.onclick = () => switchAccount(account.id);
+                
+                div.innerHTML = `
+                    <div class="account-avatar">${account.name.charAt(0).toUpperCase()}</div>
+                    <div class="account-info">
+                        <div class="account-name">${account.name}</div>
+                        <div class="account-identifier">${account.identifier}</div>
+                    </div>
+                `;
+                accountList.appendChild(div);
+            });
+            
+            document.getElementById('accountSwitcherModal').classList.add('active');
+        }
+
+        function closeAccountSwitcher() {
+            document.getElementById('accountSwitcherModal').classList.remove('active');
+        }
+
+        async function switchAccount(userId) {
+            await db.ref('users/' + currentUser.id + '/online').set(false);
+            
+            const snapshot = await db.ref('users/' + userId).once('value');
+            const user = snapshot.val();
+            
+            currentUser = { id: userId, ...user };
+            localStorage.setItem('streamxUser', JSON.stringify(currentUser));
+            await db.ref('users/' + userId + '/online').set(true);
+            
+            closeAccountSwitcher();
+            location.reload();
+        }
+
+        function addNewAccount() {
+            closeAccountSwitcher();
+            logout(false);
+        }
+
+        function viewImage(url) {
+            document.getElementById('viewerImage').src = url;
+            document.getElementById('imageViewer').classList.add('active');
+        }
+
+        function closeImageViewer() {
+            document.getElementById('imageViewer').classList.remove('active');
+        }
+
+        function downloadImage() {
+            const url = document.getElementById('viewerImage').src;
+            downloadFile(url, 'image.jpg');
+        }
+
+        async function logout(shouldReload = true) {
+            if (confirm('Are you sure you want to logout?')) {
+                await db.ref('users/' + currentUser.id + '/online').set(false);
+                localStorage.removeItem('streamxUser');
+                if (shouldReload) {
+                    location.reload();
+                } else {
+                    currentUser = null;
+                    document.getElementById('app').classList.remove('active');
+                    document.getElementById('authScreen').style.display = 'flex';
+                }
+            }
+        }
