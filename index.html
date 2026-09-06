@@ -790,12 +790,14 @@ label[for="postImagesInput"].upload-btn {
         }
         
         .search-container { 
+            margin: 4px 4px 0;
             padding: 16px 20px; 
             background: white; 
-            border-bottom: 1px solid #e2e8f0; 
+            border-radius: 16px;
             position: sticky; 
-            top: 0; 
+            top: 4px; 
             z-index: 10; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }
         
         .search-wrapper { 
@@ -828,9 +830,10 @@ label[for="postImagesInput"].upload-btn {
             background: white; 
         }
         
-        .chat-item { 
-            padding: 16px 20px; 
-            border-bottom: 1px solid #f1f5f9; 
+                .chat-item { 
+            margin: 6px 8px;
+            padding: 14px 18px; 
+            border-radius: 16px;
             display: flex; 
             align-items: center; 
             gap: 14px; 
@@ -838,6 +841,7 @@ label[for="postImagesInput"].upload-btn {
             transition: all 0.2s; 
             background: white; 
             position: relative; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }
         
         .chat-item:hover { 
@@ -1414,14 +1418,14 @@ label[for="postImagesInput"].upload-btn {
         }
         
         .chat-header { 
-            margin: 4px 4px 0;
+            margin: 4px 4px 4px;
             padding: 16px 20px; 
             background: white; 
-            border-radius: 16px 16px 0 0;
+            border-radius: 16px;
             display: flex; 
             align-items: center; 
             gap: 14px; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
         }
         
         .back-btn { 
@@ -3576,7 +3580,7 @@ form input[type="text"] {
 
     <div class="app-content">
                 <div id="messagesTab" class="hidden">
-            <div id="chatsList">
+            <div id="chatsList" style="padding-top:8px;">
                 <!-- Gray boxes shimmer until chats load -->
                 <div id="chatsSkeleton">
                     <div style="padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:14px;background:white;">
@@ -4578,7 +4582,7 @@ form input[type="text"] {
 </div>
 
 <div id="imageViewer" class="image-viewer">
-    <div style="position:fixed;top:0;left:0;right:0;background:#ffffff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:200001;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
+    <div style="position:fixed;top:4px;left:4px;right:4px;background:#ffffff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:200001;box-shadow:0 2px 10px rgba(0,0,0,0.08);border-radius:16px;">
         <button id="closeViewerBtn" style="background:#f1f5f9;border:none;border-radius:50%;width:44px;height:44px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
             <i data-lucide="x" style="width:26px;height:26px;color:#0f172a;stroke-width:2.5;"></i>
         </button>
@@ -6973,6 +6977,7 @@ function renderChatsList(docs) {
 const lastSenderId = chat.lastSenderId || '';
 const unread = (chat.lastMessageTime > lastSeen && lastSenderId !== currentUser.id) ? 1 : 0;
         div.className = 'chat-item' + (unread > 0 ? ' unread' : '');
+        div.dataset.chatid = chat.id;
         const timeStr = chat.lastMessageTime ? new Date(chat.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
         if (chat.isGroup) {
             const gpic = chat.groupPic || `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.name)}&background=8b5cf6&color=fff&size=128`;
@@ -9009,7 +9014,15 @@ function renderUploadPreview() {
     lucide.createIcons();
 }
 
-document.getElementById('sendBtn').addEventListener('click', sendMessage);
+// Use pointerdown so the message sends on the FIRST tap even when the keyboard is open
+// (click can be swallowed by the keyboard-closing layout shift on mobile)
+let _bzSendGuard = false;
+document.getElementById('sendBtn').addEventListener('pointerdown', function(e) {
+    if (_bzSendGuard) return;
+    _bzSendGuard = true;
+    sendMessage();
+    setTimeout(() => { _bzSendGuard = false; }, 400);
+});
 
 
 
